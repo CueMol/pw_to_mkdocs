@@ -1,0 +1,37 @@
+site_name: Migrated Documentation
+site_description: Migrated from PukiWiki
+site_author: Auto-generated
+
+theme:
+  name: material
+  language: ja
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - search.highlight
+    - search.suggest
+
+markdown_extensions:
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - admonition
+  - footnotes
+  - toc:
+      permalink: true
+
+nav:
+  - ホーム: index.md
+  - Bugs: Bugs.md
+  - Development: Development.md
+  - Documents: Documents.md
+  - Download: Download.md
+  - FrontPage: FrontPage.md
+  - Gallery: Gallery.md
+  - Install: Install.md
+  - Licence: Licence.md
+  - MailingList: MailingList.md
+  - RecentChanges: RecentChanges.md
+  - Updates: Updates.md
+  - ư��Ķ�: ư��Ķ�.md
+  - ���: ���.md
