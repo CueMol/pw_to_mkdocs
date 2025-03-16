@@ -1,0 +1,29 @@
+site_name: CueMol2
+# site_url: https://mydomain.org/mysite
+theme:
+  name: material
+  language: ja
+
+plugins:
+  - glightbox:
+      manual: true
+
+markdown_extensions:
+  - attr_list
+  - def_list
+  - tables
+
+extra:
+  alternate:
+    - name: 日本語
+      link: /ja/
+      lang: ja
+    - name: English
+      link: /en/
+      lang: en
+
+nav:
+  - Home: 
+    - index.md
+    - 日本語: ja/
+    - English: en/
