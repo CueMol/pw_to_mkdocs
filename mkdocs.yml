@@ -2,28 +2,63 @@ site_name: CueMol2
 # site_url: https://mydomain.org/mysite
 theme:
   name: material
-  language: ja
+  # language: ja
+  features:
+    - toc.integrate
+    - navigation.tabs
 
 plugins:
   - glightbox:
       manual: true
+  - i18n:
+      fallback_to_default: true
+      docs_structure: folder
+      languages:
+        - locale: en
+          name: English
+          build: true
+        - locale: ja
+          default: true
+          name: 日本語
+          build: true
+          nav:
+            - トップページ: index.md
+            - ドキュメント: Documents.md
+            - ギャラリー: /en/Gallery
+            - アップデート: Updates.md
+            - 動作環境: 動作環境.md
+            - ダウンロード: Download.md
+            - インストール: Install.md
+            - ライセンス: Licence.md
+#            - 寄付: Licence.md
+            - リンク: リンク.md
+            
 
 markdown_extensions:
   - attr_list
   - def_list
   - tables
+  - toc:
+      permalink: true
+      toc_depth: 6
 
 extra:
   alternate:
     - name: 日本語
-      link: /ja/
+      link: /
       lang: ja
     - name: English
       link: /en/
       lang: en
 
 nav:
-  - Home: 
-    - index.md
-    - 日本語: ja/
-    - English: en/
+  - Home: index.md
+  - Documents: Documents.md
+  - Gallery: /en/Gallery
+  - Updates: Updates.md
+  - Environment: /en/Environment
+  - Download: Download.md
+  - Install: Install.md
+  - Licence: Licence.md
+#  - Donation: Licence.md
+  - Link: Link.md

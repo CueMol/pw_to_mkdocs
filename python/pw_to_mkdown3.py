@@ -48,12 +48,19 @@ def decode_name(file_base):
 
 def process_image_options(parts):
     options = []
+    zoom_link = True
     for i in parts[1:]:
+        if i == "nolink":
+            zoom_link = False
+            continue
         mm = re.match(r"(.+)%", i)
         if mm is not None:
             # options.append(f'width="{mm.group(1)}%"')
             scl = float(mm.group(1)) / 100.0
             options.append(f'style="zoom: {scl}"')
+
+    if zoom_link:
+        options.append(".on-glb")
 
     return options
 
@@ -70,18 +77,20 @@ class PukiWikiToMkDocsConverter:
         # PukiWiki特有の記法を変換するためのルール
         self.pukiwiki_rules = [
             (r"^#access$", r""),
+            (r"^#contents$", r""),
+            # quote
+            (r"^>([^>].*)$", r"\n>\1"),
+            (r"^>>([^>].*)$", r"\n>>\1"),
+            # line break
+            (r"^(.+)~$", r"\1<br />"),
             # comment
             (r"^//(.+)$", r""),
             # 整形済みテキスト
             (r"^ (.+)$", r"```\n\1\n```"),
-            # # 見出し変換 (!!!→#, !!→##, !→###)
-            # (r"^!!!(.+)$", r"# \1"),
-            # (r"^!!(.+)$", r"## \1"),
-            # (r"^!(.+)$", r"### \1"),
             # 見出し変換 (*-->#, **→##,***!→###)
-            (r"^\*\s*([^\s\*].+)$", r"# \1"),
-            (r"^\*\*\s*([^\s\*].+)$", r"## \1"),
-            (r"^\*\*\*\s*([^\s\*].+)$", r"### \1"),
+            (r"^\*\s*([^\s\*].+)$", r"## \1"),
+            (r"^\*\*\s*([^\s\*].+)$", r"### \1"),
+            (r"^\*\*\*\s*([^\s\*].+)$", r"#### \1"),
             # リスト
             (r"^\-\-\-([^\-].+)$", r"\n        - \1"),
             (r"^\-\-([^\-].+)$", r"\n    - \1"),
@@ -90,8 +99,8 @@ class PukiWikiToMkDocsConverter:
             (r"^\+\+\+(.+)$", r"    1. \1"),
             (r"^\+\+(.+)$", r"  1. \1"),
             (r"^\+(.+)$", r"1. \1"),
-            # 表組み (簡易対応)
-            (r"\|(.+)\|", r"|\1|"),
+            # # 表組み (簡易対応)
+            # (r"\|(.+)\|", r"|\1|"),
             # 太字
             (r"''(.+?)''", r"**\1**"),
             # 斜体
@@ -109,11 +118,17 @@ class PukiWikiToMkDocsConverter:
 
         # 内部リンクパターン
         # self.internal_link_pattern = re.compile(r"\[\[([^>\]]+)(?:>(.+))?\]\]")
-        self.internal_link_pattern = re.compile(r"\[\[([^>:\]]+)[:>]([^>\]]+)\]\]")
-        self.int_link_pat2 = re.compile(r"\[\[([^>\]]+)\]\]")
+        self.int_link_pat1 = re.compile(r"\[\[([^>\]]+)>([^>\]]+)\]\]")
+        self.int_link_pat2 = re.compile(r"\[\[([^:\]]+):([^>\]]+)\]\]")
+        self.int_link_pat3 = re.compile(r"\[\[([^>\]]+)\]\]")
 
         # def_list
         self.def_list_pat = r"^:(.+)\|(.+)$"
+
+    def is_default_lang(self, lang=None):
+        if lang is None:
+            lang = self.lang
+        return lang == "ja"
 
     def _detect_encoding(self, file_path):
         """ファイルのエンコーディングを検出する関数"""
@@ -122,10 +137,6 @@ class PukiWikiToMkDocsConverter:
             result = chardet.detect(raw_data)
             encoding = result["encoding"]
             confidence = result["confidence"]
-
-            logger.info(
-                f"エンコーディング検出: {file_path} => {encoding} (信頼度: {confidence:.2f})"
-            )
 
             # 日本語の一般的なエンコーディングを優先
             if encoding and encoding.lower() in [
@@ -144,7 +155,7 @@ class PukiWikiToMkDocsConverter:
                 try:
                     with open(file_path, "r", encoding=enc) as test_f:
                         test_f.read()
-                    logger.info(f"エンコーディングを {enc} に決定しました: {file_path}")
+                    # logger.info(f"エンコーディングを {enc} に決定しました: {file_path}")
                     return enc
                 except UnicodeDecodeError:
                     continue
@@ -172,7 +183,11 @@ class PukiWikiToMkDocsConverter:
                 rel = mm.group(1)
                 # logger.info(f"*** {link=} {rel=}")
                 # logger.info(f"[{text}](/{self.lang}/{page_name}/{rel})")
-                return f"[{text}](/{self.lang}/{page_name}/{rel})"
+
+                if self.is_default_lang():
+                    return f"[{text}](/{page_name}/{rel})"
+                else:
+                    return f"[{text}](/{self.lang}/{page_name}/{rel})"
 
             mm = re.search(r"^\.\./(.*)$", link)
             if mm is not None:
@@ -180,29 +195,41 @@ class PukiWikiToMkDocsConverter:
                 rel = mm.group(1)
                 parent_dir = page_name.parent
                 logger.info(f"*** {parent_dir=} {rel=}")
-                result = f"[{text}](/{self.lang}/{parent_dir}/{rel})"
-                logger.info(f"*** {result=}")
+
+                if self.is_default_lang():
+                    result = f"[{text}](/{parent_dir}/{rel})"
+                else:
+                    result = f"[{text}](/{self.lang}/{parent_dir}/{rel})"
+
+                # logger.info(f"*** {result=}")
                 return result
 
-            mm = re.search(r"index\.php\?(.+)", link)
+            # http://www.cuemol.org/en/index.php?cuemol2%2FBallStickRenderer
+            mm = re.search(r"/(\w+)/index\.php\?(.+)", link)
             if mm is not None:
-                page_name = mm.group(1)
+                # abs link (URL)
+                lang = mm.group(1)
+                page_name = mm.group(2)
                 page_name = urllib.parse.unquote(page_name)
-                # page_name = re.sub(r'[\\/:*?"<>|]+', "_", page_name)
                 page_name = re.sub(r'[\\:*?"<>|]+', "_", page_name)
-                return f"[{text}](/{self.lang}/{page_name})"
+                if self.is_default_lang(lang):
+                    return f"[{text}](/{page_name})"
+                else:
+                    return f"[{text}](/{lang}/{page_name})"
 
             mm = re.search(r"^http://", link)
             if mm is not None:
                 # external link
                 return f"[{text}]({link})"
 
-            return f"[{text}](/{self.lang}/{link})"
+            if self.is_default_lang():
+                return f"[{text}](/{link})"
+            else:
+                return f"[{text}](/{self.lang}/{link})"
 
-        result = self.internal_link_pattern.sub(
-            partial(_repl, page_name=page_name), content
-        )
+        result = self.int_link_pat1.sub(partial(_repl, page_name=page_name), content)
         result = self.int_link_pat2.sub(partial(_repl, page_name=page_name), result)
+        result = self.int_link_pat3.sub(partial(_repl, page_name=page_name), result)
         return result
 
     def _process_images(self, content, page_name):
@@ -392,15 +419,6 @@ def main():
     converter.batch_convert_directory(args.source_dir)
     converter.lang = "en"
     converter.batch_convert_directory(args.source_dir)
-
-    with (Path(args.output_dir) / "index.md").open("w") as f:
-        f.write("""
----
-title: Home
----
-
-<meta http-equiv="refresh" content="0; url=ja/" />
-        """)
 
 
 if __name__ == "__main__":
