@@ -130,13 +130,20 @@ class PukiWikiToMkDocsConverter:
             lang = self.lang
         return lang == "ja"
 
+    def get_top_dir(self, page_name):
+        npar = len(page_name.parts) - 1
+        if not self.is_default_lang():
+            npar += 1
+        parents = "../" * npar
+        return Path(parents)
+
     def _detect_encoding(self, file_path):
         """ファイルのエンコーディングを検出する関数"""
         with open(file_path, "rb") as f:
             raw_data = f.read(4096)  # 最初の4096バイトで判定
             result = chardet.detect(raw_data)
             encoding = result["encoding"]
-            confidence = result["confidence"]
+            # confidence = result["confidence"]
 
             # 日本語の一般的なエンコーディングを優先
             if encoding and encoding.lower() in [
@@ -177,6 +184,7 @@ class PukiWikiToMkDocsConverter:
                 link = match.group(1)
                 text = link
 
+            top_dir = self.get_top_dir(page_name)
             mm = re.search(r"^\./(.+)$", link)
             if mm is not None:
                 # relative link (1)
@@ -185,9 +193,9 @@ class PukiWikiToMkDocsConverter:
                 # logger.info(f"[{text}](/{self.lang}/{page_name}/{rel})")
 
                 if self.is_default_lang():
-                    return f"[{text}](/{page_name}/{rel})"
+                    return f"[{text}]({top_dir}/{page_name}/{rel})"
                 else:
-                    return f"[{text}](/{self.lang}/{page_name}/{rel})"
+                    return f"[{text}]({top_dir}/{self.lang}/{page_name}/{rel})"
 
             mm = re.search(r"^\.\./(.*)$", link)
             if mm is not None:
@@ -197,9 +205,9 @@ class PukiWikiToMkDocsConverter:
                 logger.info(f"*** {parent_dir=} {rel=}")
 
                 if self.is_default_lang():
-                    result = f"[{text}](/{parent_dir}/{rel})"
+                    result = f"[{text}]({top_dir}/{parent_dir}/{rel})"
                 else:
-                    result = f"[{text}](/{self.lang}/{parent_dir}/{rel})"
+                    result = f"[{text}]({top_dir}/{self.lang}/{parent_dir}/{rel})"
 
                 # logger.info(f"*** {result=}")
                 return result
@@ -207,15 +215,15 @@ class PukiWikiToMkDocsConverter:
             # http://www.cuemol.org/en/index.php?cuemol2%2FBallStickRenderer
             mm = re.search(r"/(\w+)/index\.php\?(.+)", link)
             if mm is not None:
-                # abs link (URL)
+                # abs link (URL/another lang)
                 lang = mm.group(1)
                 page_name = mm.group(2)
                 page_name = urllib.parse.unquote(page_name)
                 page_name = re.sub(r'[\\:*?"<>|]+', "_", page_name)
                 if self.is_default_lang(lang):
-                    return f"[{text}](/{page_name})"
+                    return f"[{text}]({top_dir}/{page_name})"
                 else:
-                    return f"[{text}](/{lang}/{page_name})"
+                    return f"[{text}]({top_dir}/{lang}/{page_name})"
 
             mm = re.search(r"^http://", link)
             if mm is not None:
@@ -223,9 +231,9 @@ class PukiWikiToMkDocsConverter:
                 return f"[{text}]({link})"
 
             if self.is_default_lang():
-                return f"[{text}](/{link})"
+                return f"[{text}]({top_dir}/{link})"
             else:
-                return f"[{text}](/{self.lang}/{link})"
+                return f"[{text}]({top_dir}/{self.lang}/{link})"
 
         result = self.int_link_pat1.sub(partial(_repl, page_name=page_name), content)
         result = self.int_link_pat2.sub(partial(_repl, page_name=page_name), result)
@@ -251,9 +259,17 @@ class PukiWikiToMkDocsConverter:
 
             # save_path = self.img_dir / page_name / img_filename
 
+            # # print(f"*** {page_name.parts=} {len(page_name.parts)=}")
+            # npar = len(page_name.parts)
+            # if not self.is_default_lang():
+            #     npar += 1
+            # xx = "../" * npar
+            # print(f"*** {xx=}")
+
             # Markdown形式の画像参照に変換
+            top_dir = self.get_top_dir(page_name)
             rel_path = os.path.join(
-                "/", "assets", "images", page_name, img_filename
+                top_dir, "assets", "images", page_name, img_filename
             ).replace("\\", "/")
             logger.info(f"{rel_path=}")
             if len(options) > 0:
