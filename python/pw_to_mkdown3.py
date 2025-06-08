@@ -84,7 +84,8 @@ class PukiWikiToMkDocsConverter:
             # line break
             (r"^(.+)~$", r"\1<br />"),
             # comment
-            (r"^//(.+)$", r""),
+            # (r"^//(.+)$", r""),
+            # (r"^//(.+)$", r"<!-- \1 -->"),
             # 整形済みテキスト
             (r"^ (.+)$", r"```\n\1\n```"),
             # 見出し変換 (*-->#, **→##,***!→###)
@@ -92,9 +93,9 @@ class PukiWikiToMkDocsConverter:
             (r"^\*\*\s*([^\s\*].+)$", r"### \1"),
             (r"^\*\*\*\s*([^\s\*].+)$", r"#### \1"),
             # リスト
-            (r"^\-\-\-([^\-].+)$", r"\n        - \1"),
-            (r"^\-\-([^\-].+)$", r"\n    - \1"),
-            (r"^\-([^\-].+)$", r"\n- \1"),
+            (r"^\-\-\-([^\-].+)$", r"        * \1"),
+            (r"^\-\-([^\-].+)$", r"    * \1"),
+            (r"^\-([^\-].+)$", r"* \1"),
             # 番号付きリスト
             (r"^\+\+\+(.+)$", r"    1. \1"),
             (r"^\+\+(.+)$", r"  1. \1"),
@@ -131,7 +132,7 @@ class PukiWikiToMkDocsConverter:
         return lang == "ja"
 
     def get_top_dir(self, page_name):
-        npar = len(page_name.parts) - 1
+        npar = len(page_name.parts)
         if not self.is_default_lang():
             npar += 1
         parents = "../" * npar
@@ -238,6 +239,9 @@ class PukiWikiToMkDocsConverter:
         result = self.int_link_pat1.sub(partial(_repl, page_name=page_name), content)
         result = self.int_link_pat2.sub(partial(_repl, page_name=page_name), result)
         result = self.int_link_pat3.sub(partial(_repl, page_name=page_name), result)
+
+        result = "\n".join([i for i in result.splitlines() if not i.startswith("//")])
+
         return result
 
     def _process_images(self, content, page_name):
