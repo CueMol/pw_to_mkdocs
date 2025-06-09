@@ -3,9 +3,9 @@ site_name: CueMol2
 theme:
   name: material
   # language: ja
-  features:
-    - toc.integrate
-    - navigation.tabs
+  # features:
+  #   - toc.integrate
+  #   - navigation.tabs
 
 plugins:
   - glightbox:
@@ -54,9 +54,9 @@ extra:
 nav:
   - Home: index.md
   - Documents: Documents.md
-  - Gallery: /en/Gallery
+  - Gallery: Gallery.md
   - Updates: Updates.md
-  - Environment: /en/Environment
+  - Environment: Environment.md
   - Download: Download.md
   - Install: Install.md
   - Licence: Licence.md

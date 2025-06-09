@@ -92,14 +92,14 @@ class PukiWikiToMkDocsConverter:
             (r"^\*\s*([^\s\*].+)$", r"## \1"),
             (r"^\*\*\s*([^\s\*].+)$", r"### \1"),
             (r"^\*\*\*\s*([^\s\*].+)$", r"#### \1"),
-            # リスト
-            (r"^\-\-\-([^\-].+)$", r"        * \1"),
-            (r"^\-\-([^\-].+)$", r"    * \1"),
-            (r"^\-([^\-].+)$", r"* \1"),
-            # 番号付きリスト
-            (r"^\+\+\+(.+)$", r"    1. \1"),
-            (r"^\+\+(.+)$", r"  1. \1"),
-            (r"^\+(.+)$", r"1. \1"),
+            # # リスト
+            # (r"^\-\-\-([^\-].+)$", r"        * \1"),
+            # (r"^\-\-([^\-].+)$", r"    * \1"),
+            # (r"^\-([^\-].+)$", r"* \1"),
+            # # 番号付きリスト
+            # (r"^\+\+\+(.+)$", r"    1. \1"),
+            # (r"^\+\+(.+)$", r"  1. \1"),
+            # (r"^\+(.+)$", r"1. \1"),
             # # 表組み (簡易対応)
             # (r"\|(.+)\|", r"|\1|"),
             # 太字
@@ -132,6 +132,8 @@ class PukiWikiToMkDocsConverter:
         return lang == "ja"
 
     def get_top_dir(self, page_name):
+        if str(page_name) == "index":
+            return Path(".")
         npar = len(page_name.parts)
         if not self.is_default_lang():
             npar += 1
@@ -189,6 +191,8 @@ class PukiWikiToMkDocsConverter:
             mm = re.search(r"^\./(.+)$", link)
             if mm is not None:
                 # relative link (1)
+                #   default lang: [text](top_dir/page_name/rel)
+                #   other lang:   [text](top_dir/lang/page_name/rel)
                 rel = mm.group(1)
                 # logger.info(f"*** {link=} {rel=}")
                 # logger.info(f"[{text}](/{self.lang}/{page_name}/{rel})")
@@ -239,8 +243,54 @@ class PukiWikiToMkDocsConverter:
         result = self.int_link_pat1.sub(partial(_repl, page_name=page_name), content)
         result = self.int_link_pat2.sub(partial(_repl, page_name=page_name), result)
         result = self.int_link_pat3.sub(partial(_repl, page_name=page_name), result)
+        return result
 
-        result = "\n".join([i for i in result.splitlines() if not i.startswith("//")])
+    def _convert_others(self, content, page_name):
+        result = content
+        lines = result.splitlines()
+        # comments
+        lines = [i for i in lines if not i.startswith("//")]
+
+        def is_list(line):
+            if (m := re.search(r"^\-\-\-([^\-].+)$", line)) is not None:
+                return f"        * {m.group(1)}"
+            if (m := re.search(r"^\-\-([^\-].+)$", line)) is not None:
+                return f"    * {m.group(1)}"
+            if (m := re.search(r"^\-([^\-].+)$", line)) is not None:
+                return f"* {m.group(1)}"
+
+            if (m := re.search(r"^\+\+\+([^\+].+)$", line)) is not None:
+                return f"        1. {m.group(1)}"
+            if (m := re.search(r"^\+\+([^\+].+)$", line)) is not None:
+                return f"    1. {m.group(1)}"
+            if (m := re.search(r"^\+([^\+].+)$", line)) is not None:
+                return f"1. {m.group(1)}"
+
+            return None
+
+        prev_list = False
+        prev_brank = False
+        rlines = []
+        for i in lines:
+            if (m := is_list(i)) is not None:
+                if prev_list:
+                    rlines.append(m)
+                elif prev_brank:
+                    rlines.append(m)
+                else:
+                    rlines.append("")
+                    rlines.append(m)
+
+                prev_list = True
+            else:
+                rlines.append(i)
+                prev_list = False
+
+            prev_brank = (i == "")
+
+        lines = rlines
+
+        result = "\n".join(lines)
 
         return result
 
@@ -352,6 +402,8 @@ class PukiWikiToMkDocsConverter:
                 logger.error(f"re.sub error: {pattern=} {replacement=}")
                 raise e
 
+        content = self._convert_others(content, page_name)
+
         # Markdownファイルとして保存
         out_file = self.output_dir / self.lang / target_file
         out_file.parent.mkdir(parents=True, exist_ok=True)
@@ -400,10 +452,14 @@ class PukiWikiToMkDocsConverter:
         elif self.lang == "en":
             source_files = list(source_path.glob("ja/wiki.en/**/*.txt"))
 
-        # source_files = list(source_path.glob(f"{self.lang}wiki/**/46726F6E7450616765.txt"))
+        # # FrontPage
+        # source_files = ["htdocs/ja/wiki/46726F6E7450616765.txt"]
+        # # XXX
         # source_files = list(
         #     source_path.glob("wiki/**/6375656D6F6C322F5475626552656E6465726572.txt")
         # )
+
+        print(f"{self.lang} wiki files: {len(source_files)}")
 
         # with ThreadPoolExecutor() as executor:
         #     results = list(executor.map(self.convert_pukiwiki_file, source_files))

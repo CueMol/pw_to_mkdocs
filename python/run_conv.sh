@@ -5,6 +5,7 @@ source $SCRIPT_DIR/../venv/bin/activate
 
 SRCDIR=htdocs
 OUTDIR=../docs
+# OUTDIR=../../cuemol2_docs_site/docs
 
 python pw_to_mkdown3.py \
-       --source-dir htdocs --output-dir ../docs
+       --source-dir $SRCDIR --output-dir $OUTDIR
