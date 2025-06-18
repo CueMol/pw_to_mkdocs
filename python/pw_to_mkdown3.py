@@ -81,13 +81,9 @@ class PukiWikiToMkDocsConverter:
             # quote
             (r"^>([^>].*)$", r"\n>\1"),
             (r"^>>([^>].*)$", r"\n>>\1"),
-            # line break
-            (r"^(.+)~$", r"\1<br />"),
             # comment
             # (r"^//(.+)$", r""),
             # (r"^//(.+)$", r"<!-- \1 -->"),
-            # 整形済みテキスト
-            (r"^ (.+)$", r"```\n\1\n```"),
             # 見出し変換 (*-->#, **→##,***!→###)
             (r"^\*\s*([^\s\*].+)$", r"## \1"),
             (r"^\*\*\s*([^\s\*].+)$", r"### \1"),
@@ -110,6 +106,8 @@ class PukiWikiToMkDocsConverter:
             (r"%%(.+?)%%", r"~~\1~~"),
             # 下線
             (r"__(.+?)__", r"<u>\1</u>"),
+            # # 整形済みテキスト
+            # (r"^ (.+)$", r"```\n\1\n```"),
         ]
 
         # 画像のパターン (PukiWikiでは&ref=xxxxx.jpg などが一般的)
@@ -122,9 +120,6 @@ class PukiWikiToMkDocsConverter:
         self.int_link_pat1 = re.compile(r"\[\[([^>\]]+)>([^>\]]+)\]\]")
         self.int_link_pat2 = re.compile(r"\[\[([^:\]]+):([^>\]]+)\]\]")
         self.int_link_pat3 = re.compile(r"\[\[([^>\]]+)\]\]")
-
-        # def_list
-        self.def_list_pat = r"^:(.+)\|(.+)$"
 
     def is_default_lang(self, lang=None):
         if lang is None:
@@ -188,11 +183,16 @@ class PukiWikiToMkDocsConverter:
                 text = link
 
             top_dir = self.get_top_dir(page_name)
-            mm = re.search(r"^\./(.+)$", link)
-            if mm is not None:
-                # relative link (1)
-                #   default lang: [text](top_dir/page_name/rel)
-                #   other lang:   [text](top_dir/lang/page_name/rel)
+
+            # internal anchor link ("#abc_xyz" form)
+            if (mm := re.search(r"^\#(.+)$", link)) is not None:
+                idx = mm.group(1)
+                return f"[{text}](#{idx})"
+
+            if (mm := re.search(r"^\./(.+)$", link)) is not None:
+                # relative link ("./XyzAbc" form)
+                #   default lang: [text](top_dir/page_name/XyzAbc)
+                #   other lang:   [text](top_dir/lang/page_name/XyzAbc)
                 rel = mm.group(1)
                 # logger.info(f"*** {link=} {rel=}")
                 # logger.info(f"[{text}](/{self.lang}/{page_name}/{rel})")
@@ -202,9 +202,8 @@ class PukiWikiToMkDocsConverter:
                 else:
                     return f"[{text}]({top_dir}/{self.lang}/{page_name}/{rel})"
 
-            mm = re.search(r"^\.\./(.*)$", link)
-            if mm is not None:
-                # relative link (2)
+            if (mm := re.search(r"^\.\./(.*)$", link)) is not None:
+                # relative link ("../XyzAbc" form)
                 rel = mm.group(1)
                 parent_dir = page_name.parent
                 logger.info(f"*** {parent_dir=} {rel=}")
@@ -218,9 +217,8 @@ class PukiWikiToMkDocsConverter:
                 return result
 
             # http://www.cuemol.org/en/index.php?cuemol2%2FBallStickRenderer
-            mm = re.search(r"/(\w+)/index\.php\?(.+)", link)
-            if mm is not None:
-                # abs link (URL/another lang)
+            if (mm := re.search(r"/(\w+)/index\.php\?(.+)", link)) is not None:
+                # abs link ("lang/index.php?XyzAbc" form; URL/another lang)
                 lang = mm.group(1)
                 page_name = mm.group(2)
                 page_name = urllib.parse.unquote(page_name)
@@ -230,11 +228,11 @@ class PukiWikiToMkDocsConverter:
                 else:
                     return f"[{text}]({top_dir}/{lang}/{page_name})"
 
-            mm = re.search(r"^http://", link)
-            if mm is not None:
-                # external link
+            if (mm := re.search(r"^http://", link)) is not None:
+                # external link ("http://..." form)
                 return f"[{text}]({link})"
 
+            # relative link ("XyzAbc" form)
             if self.is_default_lang():
                 return f"[{text}]({top_dir}/{link})"
             else:
@@ -248,9 +246,46 @@ class PukiWikiToMkDocsConverter:
     def _convert_others(self, content, page_name):
         result = content
         lines = result.splitlines()
-        # comments
+        # remove comments
         lines = [i for i in lines if not i.startswith("//")]
 
+        # conv pre tag to ```
+        # lines = ["```" for i in lines if i == "<pre>" or i == "</pre>"]
+        lines = [re.sub(r"<pre>", "```", i) for i in lines]
+        lines = [re.sub(r"</pre>", "```", i) for i in lines]
+
+        # convert lines starting with whitespace to code block/join the contiguous code blocks
+        rlines = []
+        pre_block = False
+        for i in lines:
+            if (m := re.search(r"^ (.+)$", i)) is not None:
+                txt = m.group(1)
+                if not pre_block:
+                    rlines.append("```")
+                    pre_block = True
+                rlines.append(txt)
+            else:
+                if pre_block:
+                    rlines.append("```")
+                    pre_block = False
+                rlines.append(i)
+        if pre_block:
+            lines.append("```")
+            pre_block = False
+        lines = rlines
+
+        # convert def list
+        rlines = []
+        for i in lines:
+            if (m := re.search(r"^:(.+)\|(.+)$", i)) is not None:
+                dt = m.group(1).strip()
+                dd = m.group(2).strip()
+                rlines.append(f"\n{dt}\n:   {dd}")
+            else:
+                rlines.append(i)
+        lines = rlines
+
+        # convert unordered lists
         def is_list(line):
             if (m := re.search(r"^\-\-\-([^\-].+)$", line)) is not None:
                 return f"        * {m.group(1)}"
@@ -286,10 +321,49 @@ class PukiWikiToMkDocsConverter:
                 rlines.append(i)
                 prev_list = False
 
-            prev_brank = (i == "")
+            prev_brank = i == ""
 
         lines = rlines
 
+        # Conv &aname; to a tag
+        # lines = [re.sub(r"&aname\(.*\);", "", i) for i in lines]
+        rlines = []
+        for i in lines:
+            if (m := re.search(r"&aname\((.*)\);", i)) is not None:
+                idx = m.group(1)
+                rlines.append(f'<a id="{idx}"></a>')
+                rlines.append(re.sub(r"&aname\(.*\);", "", i))
+                continue
+            rlines.append(i)
+        lines = rlines
+
+        # Conv #youtube to Youtube embed iframe
+        rlines = []
+        for i in lines:
+            if (m := re.search(r"#youtube\((.*)\)", i)) is not None:
+                args = m.group(1).split(",")
+                video_id = args[0].strip()
+                loop = ""
+                if len(args) == 2 and args[1] == "loop":
+                    loop = "autoplay=1&loop=1&"
+                html = f"""
+<iframe width="425" height="350" src="https://www.youtube.com/embed/{video_id}?mute=1&{loop}controls=1&rel=0&playlist={video_id}"
+        title="YouTube video player"
+        frameborder="0"
+        allow="autoplay; encrypted-media"
+        allowfullscreen>
+</iframe>
+                """
+                rlines.append(html)
+                continue
+            rlines.append(i)
+        lines = rlines
+
+        # line break
+        # (r"^(.+)~$", r"\1<br />"),
+        lines = [re.sub(r"^(.+)~$", r"\1<br/>", i) for i in lines]
+
+        # concatenate lines
         result = "\n".join(lines)
 
         return result
@@ -342,16 +416,6 @@ class PukiWikiToMkDocsConverter:
         )
         return result
 
-    def _conv_def_list(self, content):
-        def _replace(m):
-            dt = m.group(1)
-            dd = m.group(2)
-            # print(f"{dt=}: {dd=}")
-            return f"{dt}\n:   {dd}\n"
-
-        result = re.sub(self.def_list_pat, _replace, content, flags=re.MULTILINE)
-        return result
-
     def determine_target_filename(self, src_file):
         """変換後のファイル名を決定する関数"""
         file_name = os.path.basename(src_file)
@@ -387,8 +451,6 @@ class PukiWikiToMkDocsConverter:
 
         # 内部リンクの変換
         content = self._convert_internal_links(orig_content, page_name)
-
-        content = self._conv_def_list(content)
 
         # 画像の処理
         # logger.info(f"{target_file.with_suffix('')=}")
