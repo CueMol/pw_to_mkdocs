@@ -249,30 +249,27 @@ class PukiWikiToMkDocsConverter:
         # remove comments
         lines = [i for i in lines if not i.startswith("//")]
 
-        # conv pre tag to ```
+        # guard pre tag
         # lines = ["```" for i in lines if i == "<pre>" or i == "</pre>"]
-        lines = [re.sub(r"<pre>", "```", i) for i in lines]
-        lines = [re.sub(r"</pre>", "```", i) for i in lines]
-
-        # convert lines starting with whitespace to code block/join the contiguous code blocks
         rlines = []
         pre_block = False
         for i in lines:
-            if (m := re.search(r"^ (.+)$", i)) is not None:
-                txt = m.group(1)
-                if not pre_block:
-                    rlines.append("```")
-                    pre_block = True
-                rlines.append(txt)
+            if i == "<pre>":
+                pre_block = True
+            elif i == "</pre>":
+                pre_block = False
             else:
                 if pre_block:
-                    rlines.append("```")
-                    pre_block = False
-                rlines.append(i)
-        if pre_block:
-            lines.append("```")
-            pre_block = False
+                    rlines.append(f"<!!!{i}!!!>")
+                else:
+                    rlines.append(i)
         lines = rlines
+        # lines = [re.sub(r"<pre>", "```", i) for i in lines]
+        # lines = [re.sub(r"</pre>", "```", i) for i in lines]
+
+        # convert lines starting with whitespace to code guard
+        # (r"^ (.+)$", r"```\n\1\n```"),
+        lines = [re.sub(r"^ (.+)$", r"<!!!\1!!!>", i) for i in lines]
 
         # convert def list
         rlines = []
@@ -280,7 +277,10 @@ class PukiWikiToMkDocsConverter:
             if (m := re.search(r"^:(.+)\|(.+)$", i)) is not None:
                 dt = m.group(1).strip()
                 dd = m.group(2).strip()
-                rlines.append(f"\n{dt}\n:   {dd}")
+                # rlines.append(f"\n{dt}\n:   {dd}")
+                rlines.append("")
+                rlines.append(dt)
+                rlines.append(f":   {dd}")
             else:
                 rlines.append(i)
         lines = rlines
@@ -340,7 +340,7 @@ class PukiWikiToMkDocsConverter:
         # Conv #youtube to Youtube embed iframe
         rlines = []
         for i in lines:
-            if (m := re.search(r"#youtube\((.*)\)", i)) is not None:
+            if (m := re.search(r"^#youtube\((.*)\)$", i)) is not None:
                 args = m.group(1).split(",")
                 video_id = args[0].strip()
                 loop = ""
@@ -362,6 +362,26 @@ class PukiWikiToMkDocsConverter:
         # line break
         # (r"^(.+)~$", r"\1<br />"),
         lines = [re.sub(r"^(.+)~$", r"\1<br/>", i) for i in lines]
+
+        # convert guarded pre blocks
+        rlines = []
+        pre_block = False
+        for i in lines:
+            if (m := re.search(r"^<!!!(.+)!!!>$", i)) is not None:
+                txt = m.group(1)
+                if not pre_block:
+                    rlines.append("```")
+                    pre_block = True
+                rlines.append(txt)
+            else:
+                if pre_block:
+                    rlines.append("```")
+                    pre_block = False
+                rlines.append(i)
+        if pre_block:
+            lines.append("```")
+            pre_block = False
+        lines = rlines
 
         # concatenate lines
         result = "\n".join(lines)
